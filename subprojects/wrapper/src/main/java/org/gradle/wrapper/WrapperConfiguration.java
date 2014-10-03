@@ -16,20 +16,21 @@
 package org.gradle.wrapper;
 
 import java.net.URI;
+import java.util.ArrayList;
 
 public class WrapperConfiguration {
-    private URI distribution;
+    private ArrayList<URI> distributions = new ArrayList<URI>();
     private String distributionBase = PathAssembler.GRADLE_USER_HOME_STRING;
     private String distributionPath = Install.DEFAULT_DISTRIBUTION_PATH;
     private String zipBase = PathAssembler.GRADLE_USER_HOME_STRING;
     private String zipPath = Install.DEFAULT_DISTRIBUTION_PATH;
 
-    public URI getDistribution() {
-        return distribution;
+    public ArrayList<URI> getDistributions() {
+        return distributions;
     }
 
-    public void setDistribution(URI distribution) {
-        this.distribution = distribution;
+    public void addDistribution(URI distribution) {
+        this.distributions.add(distribution);
     }
 
     public String getDistributionBase() {

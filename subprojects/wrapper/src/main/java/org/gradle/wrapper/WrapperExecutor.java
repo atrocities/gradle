@@ -53,7 +53,16 @@ public class WrapperExecutor {
         if (propertiesFile.exists()) {
             try {
                 loadProperties(propertiesFile, properties);
-                config.setDistribution(prepareDistributionUri());
+                config.addDistribution(prepareDistributionUri(0));
+                URI nextDistUrl;
+                int nextCount = 1;
+                do {
+                    nextDistUrl = prepareDistributionUri(nextCount);
+                    if (nextDistUrl != null) {
+                        config.addDistribution(nextDistUrl);
+                    }
+                    nextCount ++;
+                } while (nextDistUrl != null);
                 config.setDistributionBase(getProperty(DISTRIBUTION_BASE_PROPERTY, config.getDistributionBase()));
                 config.setDistributionPath(getProperty(DISTRIBUTION_PATH_PROPERTY, config.getDistributionPath()));
                 config.setZipBase(getProperty(ZIP_STORE_BASE_PROPERTY, config.getZipBase()));
@@ -64,8 +73,11 @@ public class WrapperExecutor {
         }
     }
 
-    private URI prepareDistributionUri() throws URISyntaxException {
-        URI source = readDistroUrl();
+    private URI prepareDistributionUri(int num) throws URISyntaxException {
+        URI source = readDistroUrl(num);
+        if (source == null) {
+            return null;
+        }
         if (source.getScheme() == null) {
             //no scheme means someone passed a relative url. In our context only file relative urls make sense.
             return new File(propertiesFile.getParentFile(), source.getSchemeSpecificPart()).toURI();
@@ -74,12 +86,20 @@ public class WrapperExecutor {
         }
     }
 
-    private URI readDistroUrl() throws URISyntaxException {
-        if (properties.getProperty(DISTRIBUTION_URL_PROPERTY) != null) {
-            return new URI(getProperty(DISTRIBUTION_URL_PROPERTY));
+    private URI readDistroUrl(int num) throws URISyntaxException {
+        if (num == 0) {
+            if (properties.getProperty(DISTRIBUTION_URL_PROPERTY) != null) {
+                return new URI(getProperty(DISTRIBUTION_URL_PROPERTY));
+            }
+            //try the deprecated way:
+            return readDistroUrlDeprecatedWay();
+        } else {
+            if (properties.getProperty(DISTRIBUTION_URL_PROPERTY + Integer.toString(num)) != null) {
+                return new URI(getProperty(DISTRIBUTION_URL_PROPERTY + Integer.toString(num)));
+            } else {
+                return null;
+            }
         }
-        //try the deprecated way:
-        return readDistroUrlDeprecatedWay();
     }
 
     private URI readDistroUrlDeprecatedWay() throws URISyntaxException {
@@ -112,7 +132,9 @@ public class WrapperExecutor {
      * Returns the distribution which this wrapper will use. Returns null if no wrapper meta-data was found in the specified project directory.
      */
     public URI getDistribution() {
-        return config.getDistribution();
+        if (config.getDistributions() == null)
+            return null;
+        return config.getDistributions().get(0);
     }
 
     /**

@@ -20,6 +20,7 @@ import java.io.*;
 import java.net.URI;
 import java.util.*;
 import java.util.concurrent.Callable;
+import java.util.ArrayList;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -35,8 +36,7 @@ public class Install {
     }
 
     public File createDist(WrapperConfiguration configuration) throws Exception {
-        final URI distributionUrl = configuration.getDistribution();
-
+        final ArrayList<URI> distributionUrls = configuration.getDistributions();
         final PathAssembler.LocalDistribution localDistribution = pathAssembler.getDistribution(configuration);
         final File distDir = localDistribution.getDistributionDir();
         final File localZipFile = localDistribution.getZipFile();
@@ -47,15 +47,33 @@ public class Install {
                 if (distDir.isDirectory() && markerFile.isFile()) {
                     return getDistributionRoot(distDir, distDir.getAbsolutePath());
                 }
+                URI distributionUrl = null;
 
                 boolean needsDownload = !localZipFile.isFile();
 
                 if (needsDownload) {
-                    File tmpZipFile = new File(localZipFile.getParentFile(), localZipFile.getName() + ".part");
-                    tmpZipFile.delete();
-                    System.out.println("Downloading " + distributionUrl);
-                    download.download(distributionUrl, tmpZipFile);
-                    tmpZipFile.renameTo(localZipFile);
+                    // Try all distribution locations
+                    int distNum;
+                    for (distNum = 0; distNum < distributionUrls.size(); distNum++) {
+                        distributionUrl = distributionUrls.get(distNum);
+                        try {
+                            File tmpZipFile = new File(localZipFile.getParentFile(), localZipFile.getName() + ".part");
+                            tmpZipFile.delete();
+                            System.out.println("Downloading " + distributionUrl);
+                            download.download(distributionUrl, tmpZipFile);
+                            tmpZipFile.renameTo(localZipFile);
+                            break;
+                        } catch (Exception e) {
+                            System.out.println(e);
+                            continue;
+                        }
+                    }
+                    if (distNum == distributionUrls.size()) {
+                        throw new RuntimeException("No Gradle distributions found");
+                    }
+                } else {
+                    // Already downloaded, so just use the first one, who cares
+                    distributionUrl = distributionUrls.get(0);
                 }
 
                 List<File> topLevelDirs = listDirs(distDir);
