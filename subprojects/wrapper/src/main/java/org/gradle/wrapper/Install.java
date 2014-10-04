@@ -25,6 +25,7 @@ import java.util.zip.ZipFile;
 
 public class Install {
     public static final String DEFAULT_DISTRIBUTION_PATH = "wrapper/dists";
+    public static final String ALTERNATE_DIST_DIR_PROPERTY = "org.gradle.alternateDistDir";
     private final IDownload download;
     private final PathAssembler pathAssembler;
     private final ExclusiveFileAccessManager exclusiveFileAccessManager = new ExclusiveFileAccessManager(120000, 200);
@@ -48,31 +49,80 @@ public class Install {
                     return getDistributionRoot(distDir, distDir.getAbsolutePath());
                 }
 
-                boolean needsDownload = !localZipFile.isFile();
+                    boolean needsDownload = !localZipFile.isFile();
 
-                if (needsDownload) {
-                    File tmpZipFile = new File(localZipFile.getParentFile(), localZipFile.getName() + ".part");
-                    tmpZipFile.delete();
-                    System.out.println("Downloading " + distributionUrl);
-                    download.download(distributionUrl, tmpZipFile);
-                    tmpZipFile.renameTo(localZipFile);
+                    if (needsDownload) {
+                        File tmpZipFile = new File(localZipFile.getParentFile(), localZipFile.getName() + ".part");
+                        tmpZipFile.delete();
+                        System.out.println("Downloading " + distributionUrl);
+                        try {
+                            download.download(distributionUrl, tmpZipFile);
+                        } catch (Exception e) {
+                            if (!tryAlternateLocations(distributionUrl, tmpZipFile)) {
+                                throw e;
+                            }
+                        }
+                        tmpZipFile.renameTo(localZipFile);
+                    }
+
+                    List<File> topLevelDirs = listDirs(distDir);
+                    for (File dir : topLevelDirs) {
+                        System.out.println("Deleting directory " + dir.getAbsolutePath());
+                        deleteDir(dir);
+                    }
+                    System.out.println("Unzipping " + localZipFile.getAbsolutePath() + " to " + distDir.getAbsolutePath());
+                    unzip(localZipFile, distDir);
+
+                    File root = getDistributionRoot(distDir, distributionUrl.toString());
+                    setExecutablePermissions(root);
+                    markerFile.createNewFile();
+
+                    return root;
                 }
+            });
+        }
 
-                List<File> topLevelDirs = listDirs(distDir);
-                for (File dir : topLevelDirs) {
-                    System.out.println("Deleting directory " + dir.getAbsolutePath());
-                    deleteDir(dir);
-                }
-                System.out.println("Unzipping " + localZipFile.getAbsolutePath() + " to " + distDir.getAbsolutePath());
-                unzip(localZipFile, distDir);
-
-                File root = getDistributionRoot(distDir, distributionUrl.toString());
-                setExecutablePermissions(root);
-                markerFile.createNewFile();
-
-                return root;
+        private boolean tryAlternateLocations(URI distributionUrl, File tmpZipFile) throws Exception {
+            List<String> alternateLocations = getAlternateLocations();
+            if (alternateLocations.size() == 0) {
+                System.out.println("No alternate locations found");
+                return false;
             }
-        });
+            Iterator<String> addIterator = alternateLocations.iterator();
+        while (addIterator.hasNext()) {
+            try {
+                String alternateLocation = addIterator.next();
+                String distName = distributionUrl.getPath().replaceFirst(".*/", "").replaceFirst(".*\\\\", "");
+                URI altDist = new File(alternateLocation, distName).toURI();
+                System.out.println(String.format("Looking in alternate location %s", altDist));
+                download.download(altDist, tmpZipFile);
+            } catch (Exception e) {
+                if (addIterator.hasNext()) {
+                    continue;
+                } else {
+                    throw e;
+                }
+            }
+        }
+        return true;
+    }
+
+    private List<String> getAlternateLocations() {
+        int numPropertiesFound = 0;
+        String alternateLocation = null;
+        List<String> alternateLocations = new ArrayList<String>();
+        do {
+            if (numPropertiesFound == 0) {
+                alternateLocation = System.getProperty(ALTERNATE_DIST_DIR_PROPERTY);
+            } else {
+                alternateLocation = System.getProperty(ALTERNATE_DIST_DIR_PROPERTY + Integer.toString(numPropertiesFound));
+            }
+            if (alternateLocation != null) {
+                alternateLocations.add(alternateLocation);
+                numPropertiesFound ++;
+            }
+        } while (alternateLocation != null);
+        return alternateLocations;
     }
 
     private File getDistributionRoot(File distDir, String distributionDescription) {
